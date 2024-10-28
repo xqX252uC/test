@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>排版助手</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        .markdown-preview blockquote {
+            border-left: 4px solid #e5e7eb;
+            padding-left: 1rem;
+            margin: 1rem 0;
+            color: #4b5563;
+        }
+        .markdown-preview hr {
+            margin: 2rem 0;
+            border-top: 2px solid #e5e7eb;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-6xl mx-auto p-4">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">排版助手</h1>
+            <p class="text-gray-600 mt-2">输入文本，自动转换为规范的 Markdown 格式</p>
+        </header>
+
+        <div class="grid md:grid-cols-2 gap-6">
+            <!-- 输入区域 -->
+            <div class="space-y-4">
+                <div class="bg-white rounded-lg shadow-sm">
+                    <textarea 
+                        id="input" 
+                        class="w-full h-[500px] p-4 rounded-lg border-0 focus:ring-2 focus:ring-blue-500 resize-none"
+                        placeholder="请输入需要排版的内容..."></textarea>
+                </div>
+                <div class="flex gap-4">
+                    <button 
+                        id="formatBtn"
+                        class="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors">
+                        排版转换
+                    </button>
+                    <button 
+                        id="copyBtn"
+                        class="flex-1 bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg transition-colors">
+                        复制结果
+                    </button>
+                </div>
+            </div>
+
+            <!-- 预览区域 -->
+            <div class="bg-white rounded-lg shadow-sm p-6 min-h-[500px] markdown-preview">
+                <div id="preview" class="prose max-w-none">
+                    <p class="text-gray-400">预览区域</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const input = document.getElementById('input');
+            const preview = document.getElementById('preview');
+            const formatBtn = document.getElementById('formatBtn');
+            const copyBtn = document.getElementById('copyBtn');
+
+            // API调用格式化
+            async function formatText(text) {
+                const response = await fetch(
+                    'https://api.cloudflare.com/client/v4/accounts/36d717702673acf6f38d12be52ce9e3e/ai/run/@cf/meta/llama-3-8b-instruct',
+                    {
+                        headers: { 
+                            'Authorization': 'Bearer s7GITCnc1Xq47BQdqLtHTJPi30tpNB1xu7W5E5y4',
+                            'Content-Type': 'application/json'
+                        },
+                        method: 'POST',
+                        body: JSON.stringify({
+                            messages: [
+                                {
+                                    role: "system",
+                                    content: "你是一个排版助手，我提供摘抄内容后，你帮我排版，整体markdown排版，不要输出其他废话。请将提供的摘抄内容按照以下格式排版：使用Markdown中的引用格式 > 展示内容，并在摘抄内容下方标注来源，多个摘抄内容之间用水平分隔线(---)分隔。"
+                                },
+                                {
+                                    role: "user",
+                                    content: text
+                                }
+                            ]
+                        })
+                    }
+                );
+
+                if (!response.ok) {
+                    throw new Error('API 调用失败: ' + response.statusText);
+                }
+
+                const result = await response.json();
+                return result.result.response;
+            }
+
+            // 复制到剪贴板
+            async function copyToClipboard(text) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    return true;
+                } catch (err) {
+                    console.error('复制失败:', err);
+                    return false;
+                }
+            }
+
+            // 格式化按钮点击事件
+            formatBtn.addEventListener('click', async () => {
+                const text = input.value;
+                if (!text) {
+                    preview.innerHTML = '<p class="text-red-500">请输入内容</p>';
+                    return;
+                }
+
+                try {
+                    formatBtn.disabled = true;
+                    formatBtn.textContent = '处理中...';
+                    
+                    const formattedText = await formatText(text);
+                    preview.innerHTML = marked.parse(formattedText);
+                    
+                    // 存储到本地
+                    localStorage.setItem('lastFormatted', formattedText);
+                } catch (error) {
+                    console.error('格式化失败:', error);
+                    preview.innerHTML = '<p class="text-red-500">格式化失败，请重试</p>';
+                } finally {
+                    formatBtn.disabled = false;
+                    formatBtn.textContent = '排版转换';
+                }
+            });
+
+            // 复制按钮点击事件
+            copyBtn.addEventListener('click', async () => {
+                const formattedText = localStorage.getItem('lastFormatted');
+                if (!formattedText) {
+                    alert('没有可复制的内容');
+                    return;
+                }
+
+                const success = await copyToClipboard(formattedText);
+                if (success) {
+                    const originalText = copyBtn.textContent;
+                    copyBtn.textContent = '复制成功！';
+                    setTimeout(() => {
+                        copyBtn.textContent = originalText;
+                    }, 2000);
+                } else {
+                    alert('复制失败，请手动复制');
+                }
+            });
+
+            // 恢复上次的内容
+            const lastFormatted = localStorage.getItem('lastFormatted');
+            if (lastFormatted) {
+                preview.innerHTML = marked.parse(lastFormatted);
+            }
+        });
+    </script>
+</body>
+</html>
